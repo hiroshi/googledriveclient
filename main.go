@@ -110,7 +110,7 @@ func main() {
 	}
 
 	r, err := srv.Files.List().PageSize(10).
-		Fields("nextPageToken, files(id, name)").Do()
+		Fields("nextPageToken, files(id, name, md5Checksum)").Do()
 	if err != nil {
 		log.Fatalf("Unable to retrieve files: %v", err)
 	}
@@ -118,7 +118,7 @@ func main() {
 	fmt.Println("Files:")
 	if len(r.Files) > 0 {
 		for _, i := range r.Files {
-			fmt.Printf("%s (%s)\n", i.Name, i.Id)
+			fmt.Printf("%s (%s)\n", i.Name, i.Md5Checksum)
 		}
 	} else {
 		fmt.Println("No files found.")
