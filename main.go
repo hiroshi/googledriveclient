@@ -109,19 +109,54 @@ func main() {
 		log.Fatalf("Unable to retrieve drive Client %v", err)
 	}
 
-	r, err := srv.Files.List().PageSize(10).
-		Fields("nextPageToken, files(id, name, md5Checksum)").Do()
-	if err != nil {
-		log.Fatalf("Unable to retrieve files: %v", err)
-	}
-
-	fmt.Println("Files:")
-	if len(r.Files) > 0 {
-		for _, i := range r.Files {
-			fmt.Printf("%s (%s)\n", i.Name, i.Md5Checksum)
+	// Get file list
+	var numFiles int
+	var pageToken string
+	// var folders map[string]*struct{ // key: File.Id
+	// 	Name string,
+	// 	Parents []string
+	// }
+	folders := make(map[string]*drive.File) // key: File.Id
+	files := make(map[string]*drive.File) // key: File.Md5Checksum
+	for {
+		list := srv.Files.List().
+			PageSize(1000).
+			// Q("not mimeType contains 'application/vnd.google-apps'").
+			Fields("nextPageToken, files(id, name, md5Checksum, mimeType, parents)")
+		if pageToken != "" {
+			list = list.PageToken(pageToken)
 		}
-	} else {
-		fmt.Println("No files found.")
+		r, err := list.Do()
+		if err != nil {
+			log.Fatalf("Unable to retrieve files: %v", err)
+		}
+		numFiles += len(r.Files)
+		for _, i := range r.Files {
+			fmt.Printf("%s (md5: %s, type: %s, id: %s, parents: %v)\n", i.Name, i.Md5Checksum, i.MimeType, i.Id, i.Parents)
+			// fmt.Printf("%+v\n", i)
+			if i.MimeType == "application/vnd.google-apps.folder" {
+				folders[i.Id] = i
+			} else if i.Md5Checksum != "" {
+				files[i.Md5Checksum] = i
+			}
+		}
+		fmt.Printf("count:%d\n\n", numFiles)
+		if r.NextPageToken == "" {
+			break
+		}
+		pageToken = r.NextPageToken
 	}
-
+	// debug: print path
+	for _, file := range files {
+		path := file.Name
+		folder := folders[file.Parents[0]]
+		for folder != nil {
+			// fmt.Printf("%v\n", folder)
+			if folder != nil {
+				path = folder.Name + "/" + path
+				folder, ok := folders[folder.Parents[0]]
+			}
+		}
+		fmt.Printf("/%s\n", path)
+	}
 }
