@@ -88,6 +88,7 @@ func saveToken(file string, token *oauth2.Token) {
 	json.NewEncoder(f).Encode(token)
 }
 
+
 func main() {
 	ctx := context.Background()
 
@@ -110,41 +111,70 @@ func main() {
 	}
 
 	// Get file list
-	var numFiles int
-	var pageToken string
-	// var folders map[string]*struct{ // key: File.Id
-	// 	Name string,
-	// 	Parents []string
-	// }
-	folders := make(map[string]*drive.File) // key: File.Id
 	files := make(map[string]*drive.File) // key: File.Md5Checksum
-	for {
-		list := srv.Files.List().
-			PageSize(1000).
-			// Q("not mimeType contains 'application/vnd.google-apps'").
-			Fields("nextPageToken, files(id, name, md5Checksum, mimeType, parents)")
-		if pageToken != "" {
-			list = list.PageToken(pageToken)
-		}
-		r, err := list.Do()
+	// Read files from cache if available
+	if _, err := os.Stat("files.json"); err == nil {
+		fmt.Printf("Read files.json\n")
+		filesJson, err := ioutil.ReadFile("files.json")
 		if err != nil {
-			log.Fatalf("Unable to retrieve files: %v", err)
+			log.Fatalf("ioutil.ReadFile(files.json) failed: %v", err)
 		}
-		numFiles += len(r.Files)
-		for _, i := range r.Files {
-			fmt.Printf("%s (md5: %s, type: %s, id: %s, parents: %v)\n", i.Name, i.Md5Checksum, i.MimeType, i.Id, i.Parents)
-			// fmt.Printf("%+v\n", i)
-			if i.MimeType == "application/vnd.google-apps.folder" {
-				folders[i.Id] = i
-			} else if i.Md5Checksum != "" {
-				files[i.Md5Checksum] = i
+		// files := map[string]*drive.File
+		err = json.Unmarshal(filesJson, &files)
+		if err != nil {
+			log.Fatalf("json.Unmarshal(filesJson) failed: %v", err)
+		}
+	}
+
+  // Read from remote
+	if len(files) == 0 {
+		var numFiles int
+		var pageToken string
+		for {
+			list := srv.Files.List().
+				PageSize(1000).
+				// Q("not mimeType contains 'application/vnd.google-apps'").
+				Fields("nextPageToken, files(id, name, md5Checksum, mimeType, parents)")
+			if pageToken != "" {
+				list = list.PageToken(pageToken)
 			}
+			r, err := list.Do()
+			if err != nil {
+				log.Fatalf("Unable to retrieve files: %v", err)
+			}
+			numFiles += len(r.Files)
+			for _, i := range r.Files {
+				fmt.Printf("%s (md5: %s, type: %s, id: %s, parents: %v)\n", i.Name, i.Md5Checksum, i.MimeType, i.Id, i.Parents)
+				if i.Md5Checksum != "" {
+					files[i.Md5Checksum] = i
+				}
+			}
+			fmt.Printf("count:%d\n\n", numFiles)
+			if r.NextPageToken == "" {
+				break
+			}
+			pageToken = r.NextPageToken
+			// break //DEBUG
 		}
-		fmt.Printf("count:%d\n\n", numFiles)
-		if r.NextPageToken == "" {
-			break
+	}
+
+	// Cache files
+	fmt.Printf("Write files.json\n")
+	filesJson , err := json.Marshal(files)
+	if err != nil {
+		log.Fatalf("json.Marshal(files) failed: %v", err)
+	}
+	err = ioutil.WriteFile("files.json", filesJson, 0644)
+	if err != nil {
+		log.Fatalf("ioutil.WriteFile(fileJson) failed: %v", err)
+	}
+
+	// Extract folders
+	folders := make(map[string]*drive.File) // key: File.Id
+	for _, file := range files {
+		if file.MimeType == "application/vnd.google-apps.folder" {
+			folders[file.Id] = file
 		}
-		pageToken = r.NextPageToken
 	}
 	// debug: print path
 	for _, file := range files {
@@ -154,7 +184,10 @@ func main() {
 			// fmt.Printf("%v\n", folder)
 			if folder != nil {
 				path = folder.Name + "/" + path
-				folder, ok := folders[folder.Parents[0]]
+				_f, ok := folders[folder.Parents[0]]
+				if ok {
+					folder = _f
+				}
 			}
 		}
 		fmt.Printf("/%s\n", path)
