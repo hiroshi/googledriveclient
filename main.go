@@ -111,7 +111,8 @@ func main() {
 	}
 
 	// Get file list
-	files := make(map[string]*drive.File) // key: File.Md5Checksum
+	// files := make(map[string]*drive.File) // key: File.Md5Checksum
+	files := []*drive.File{}
 	// Read files from cache if available
 	if _, err := os.Stat("files.json"); err == nil {
 		fmt.Printf("Read files.json\n")
@@ -145,9 +146,10 @@ func main() {
 			numFiles += len(r.Files)
 			for _, i := range r.Files {
 				fmt.Printf("%s (md5: %s, type: %s, id: %s, parents: %v)\n", i.Name, i.Md5Checksum, i.MimeType, i.Id, i.Parents)
-				if i.Md5Checksum != "" {
-					files[i.Md5Checksum] = i
-				}
+				// if i.Md5Checksum != "" {
+				// 	files[i.Md5Checksum] = i
+				// }
+				files = append(files, i)
 			}
 			fmt.Printf("count:%d\n\n", numFiles)
 			if r.NextPageToken == "" {
@@ -160,7 +162,7 @@ func main() {
 
 	// Cache files
 	fmt.Printf("Write files.json\n")
-	filesJson , err := json.Marshal(files)
+	filesJson , err := json.MarshalIndent(files, "", "  ")
 	if err != nil {
 		log.Fatalf("json.Marshal(files) failed: %v", err)
 	}
@@ -176,20 +178,25 @@ func main() {
 			folders[file.Id] = file
 		}
 	}
-	// debug: print path
+  fmt.Printf("folders: %d\n", len(folders))
+
+	// debug: print path of real files
 	for _, file := range files {
-		path := file.Name
-		folder := folders[file.Parents[0]]
-		for folder != nil {
-			// fmt.Printf("%v\n", folder)
-			if folder != nil {
-				path = folder.Name + "/" + path
-				_f, ok := folders[folder.Parents[0]]
-				if ok {
-					folder = _f
+		if file.Md5Checksum != "" {
+			// path := file.Name
+			// folder := folders[file.Parents[0]]
+			path := ""
+			for file != nil {
+				path = "/" + file.Name + path
+				// fmt.Printf("folder: %+v\n", folder)
+				if file.Parents != nil {
+					f, _ := folders[file.Parents[0]]
+					file = f
+				} else {
+					file = nil
 				}
 			}
+			fmt.Printf("%s\n", path)
 		}
-		fmt.Printf("/%s\n", path)
 	}
 }
