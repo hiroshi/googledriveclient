@@ -1,7 +1,10 @@
 package main
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
+	// "errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -89,7 +92,7 @@ func saveToken(file string, token *oauth2.Token) {
 }
 
 
-func main() {
+func remote() {
 	ctx := context.Background()
 
 	b, err := ioutil.ReadFile("client_secret.json")
@@ -199,4 +202,38 @@ func main() {
 			fmt.Printf("%s\n", path)
 		}
 	}
+}
+
+func walkFunc(path string, f os.FileInfo, err error) error {
+	// fmt.Printf("%s (%+v)\n", path, f)
+	if err != nil {
+		log.Printf("walkFunc(%s) with error: %v", path, err)
+	}
+	// fmt.Printf("%s (%+v)\n", path, f)
+	if f.IsDir() {
+		return nil
+	}
+	// fmt.Printf("f.Sys() => %+v", f.Sys())
+	b, err := ioutil.ReadFile(path)
+	if err != nil {
+		log.Fatalf("ioutil.ReadFile(%s) failed %v", path, err)
+	}
+	md5sum := md5.Sum(b)
+	md5hex := hex.EncodeToString(md5sum[:])
+	fmt.Printf("%s (md5: %s)\n", path, md5hex)
+	// return errors.New("stop")
+	return nil
+}
+
+func local(localPath string) {
+	err := filepath.Walk(localPath, walkFunc)
+	if err != nil {
+		log.Fatalf("filepath.Walk(%s) failed: %v", localPath, err)
+	}
+}
+
+func main() {
+	localPath := os.Args[1]
+	// remote()
+	local(localPath)
 }
