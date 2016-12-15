@@ -204,36 +204,46 @@ func remote() {
 	}
 }
 
-func walkFunc(path string, f os.FileInfo, err error) error {
-	// fmt.Printf("%s (%+v)\n", path, f)
-	if err != nil {
-		log.Printf("walkFunc(%s) with error: %v", path, err)
-	}
-	// fmt.Printf("%s (%+v)\n", path, f)
-	if f.IsDir() {
+func local(basePath string) {
+  walkFunc := func(path string, f os.FileInfo, err error) error {
+		// fmt.Printf("%s (%+v)\n", path, f)
+		if err != nil {
+			log.Printf("walkFunc(%s) with error: %v", path, err)
+		}
+		// fmt.Printf("%s (%+v)\n", path, f)
+		if f.IsDir() {
+			return nil
+		}
+		// fmt.Printf("f.Sys() => %+v", f.Sys())
+		b, err := ioutil.ReadFile(path)
+		if err != nil {
+			log.Fatalf("ioutil.ReadFile(%s) failed %v", path, err)
+		}
+		md5sum := md5.Sum(b)
+		md5hex := hex.EncodeToString(md5sum[:])
+		relativePath, _ := filepath.Rel(basePath, path)
+		fmt.Printf("%s (md5: %s)\n", relativePath, md5hex)
+		// return errors.New("stop")
 		return nil
 	}
-	// fmt.Printf("f.Sys() => %+v", f.Sys())
-	b, err := ioutil.ReadFile(path)
+
+	err := filepath.Walk(basePath, walkFunc)
 	if err != nil {
-		log.Fatalf("ioutil.ReadFile(%s) failed %v", path, err)
+		log.Fatalf("filepath.Walk(%s) failed: %v", basePath, err)
 	}
-	md5sum := md5.Sum(b)
-	md5hex := hex.EncodeToString(md5sum[:])
-	fmt.Printf("%s (md5: %s)\n", path, md5hex)
-	// return errors.New("stop")
-	return nil
 }
 
-func local(localPath string) {
-	err := filepath.Walk(localPath, walkFunc)
-	if err != nil {
-		log.Fatalf("filepath.Walk(%s) failed: %v", localPath, err)
-	}
-}
+// type localFile struct {
+	
+// }
+
+// type cache struct {
+// 	remote []drive.File
+// 	local []
+// }
 
 func main() {
-	localPath := os.Args[1]
+	basePath := os.Args[1]
 	// remote()
-	local(localPath)
+	local(basePath)
 }
