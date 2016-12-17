@@ -250,8 +250,12 @@ func remotePath(folders map[string]drive.File, file drive.File) string {
 	for f != nil {
 		path = "/" + f.Name + path
 		if f.Parents != nil {
-			d, _ := folders[f.Parents[0]]
-			f = &d
+			d, ok := folders[f.Parents[0]]
+			if ok {
+				f = &d
+			} else {
+				f = nil
+			}
 		} else {
 			f = nil
 		}
@@ -301,15 +305,21 @@ func main() {
 			folders[file.Id] = file
 		}
 	}
-  fmt.Printf("folders: %d\n", len(folders))
+  // fmt.Printf("folders: %d\n", len(folders))
 
-	// debug print remote
-	for _, file := range files.Remote {
-		fmt.Printf("%s (md5=%s\n", remotePath(folders, file), file.Md5Checksum)
-	}
-	// debug print local
+	localMd5 := make(map[string]*localFile)
 	for _, file := range files.Local {
-		fmt.Printf("%s (md5=%s\n", file.Path, file.Md5Checksum)
+		// fmt.Printf("%s (md5=%s\n", file.Path, file.Md5Checksum)
+		localMd5[file.Md5Checksum] = &file
 	}
-
+	for _, remote := range files.Remote {
+		if remote.Md5Checksum != "" {
+			local := localMd5[remote.Md5Checksum]
+			if local == nil {
+				fmt.Printf("%s (md5=%s)\n", remotePath(folders, remote), remote.Md5Checksum)
+			}
+			// break
+		}
+	}
+	fmt.Printf("Those remote files above don't exist local.\n")
 }
