@@ -92,7 +92,7 @@ func saveToken(file string, token *oauth2.Token) {
 }
 
 
-func remote() {
+func remote() []drive.File {
 	ctx := context.Background()
 
 	b, err := ioutil.ReadFile("client_secret.json")
@@ -114,97 +114,95 @@ func remote() {
 	}
 
 	// Get file list
-	// files := make(map[string]*drive.File) // key: File.Md5Checksum
-	files := []*drive.File{}
-	// Read files from cache if available
-	if _, err := os.Stat("files.json"); err == nil {
-		fmt.Printf("Read files.json\n")
-		filesJson, err := ioutil.ReadFile("files.json")
-		if err != nil {
-			log.Fatalf("ioutil.ReadFile(files.json) failed: %v", err)
-		}
-		// files := map[string]*drive.File
-		err = json.Unmarshal(filesJson, &files)
-		if err != nil {
-			log.Fatalf("json.Unmarshal(filesJson) failed: %v", err)
-		}
-	}
+	var files []drive.File
+	// // Read files from cache if available
+	// if _, err := os.Stat("files.json"); err == nil {
+	// 	fmt.Printf("Read files.json\n")
+	// 	filesJson, err := ioutil.ReadFile("files.json")
+	// 	if err != nil {
+	// 		log.Fatalf("ioutil.ReadFile(files.json) failed: %v", err)
+	// 	}
+	// 	// files := map[string]*drive.File
+	// 	err = json.Unmarshal(filesJson, &files)
+	// 	if err != nil {
+	// 		log.Fatalf("json.Unmarshal(filesJson) failed: %v", err)
+	// 	}
+	// }
 
   // Read from remote
-	if len(files) == 0 {
-		var numFiles int
-		var pageToken string
-		for {
-			list := srv.Files.List().
-				PageSize(1000).
-				// Q("not mimeType contains 'application/vnd.google-apps'").
-				Fields("nextPageToken, files(id, name, md5Checksum, mimeType, parents)")
-			if pageToken != "" {
-				list = list.PageToken(pageToken)
-			}
-			r, err := list.Do()
-			if err != nil {
-				log.Fatalf("Unable to retrieve files: %v", err)
-			}
-			numFiles += len(r.Files)
-			for _, i := range r.Files {
-				fmt.Printf("%s (md5: %s, type: %s, id: %s, parents: %v)\n", i.Name, i.Md5Checksum, i.MimeType, i.Id, i.Parents)
-				// if i.Md5Checksum != "" {
-				// 	files[i.Md5Checksum] = i
-				// }
-				files = append(files, i)
-			}
-			fmt.Printf("count:%d\n\n", numFiles)
-			if r.NextPageToken == "" {
-				break
-			}
-			pageToken = r.NextPageToken
-			// break //DEBUG
+	var numFiles int
+	var pageToken string
+	for {
+		list := srv.Files.List().
+			PageSize(1000).
+			// Q("not mimeType contains 'application/vnd.google-apps'").
+			Fields("nextPageToken, files(id, name, md5Checksum, mimeType, parents)")
+		if pageToken != "" {
+			list = list.PageToken(pageToken)
 		}
+		r, err := list.Do()
+		if err != nil {
+			log.Fatalf("Unable to retrieve files: %v", err)
+		}
+		numFiles += len(r.Files)
+		for _, i := range r.Files {
+			fmt.Printf("%s (md5: %s, type: %s, id: %s, parents: %v)\n", i.Name, i.Md5Checksum, i.MimeType, i.Id, i.Parents)
+			// if i.Md5Checksum != "" {
+			// 	files[i.Md5Checksum] = i
+			// }
+			files = append(files, *i)
+		}
+		fmt.Printf("count:%d\n\n", numFiles)
+		if r.NextPageToken == "" {
+			break
+		}
+		pageToken = r.NextPageToken
+		// break //DEBUG
 	}
-
-	// Cache files
-	fmt.Printf("Write files.json\n")
-	filesJson , err := json.MarshalIndent(files, "", "  ")
-	if err != nil {
-		log.Fatalf("json.Marshal(files) failed: %v", err)
-	}
-	err = ioutil.WriteFile("files.json", filesJson, 0644)
-	if err != nil {
-		log.Fatalf("ioutil.WriteFile(fileJson) failed: %v", err)
-	}
+	return files
+	// // Cache files
+	// fmt.Printf("Write files.json\n")
+	// filesJson , err := json.MarshalIndent(files, "", "  ")
+	// if err != nil {
+	// 	log.Fatalf("json.Marshal(files) failed: %v", err)
+	// }
+	// err = ioutil.WriteFile("files.json", filesJson, 0644)
+	// if err != nil {
+	// 	log.Fatalf("ioutil.WriteFile(fileJson) failed: %v", err)
+	// }
 
 	// Extract folders
-	folders := make(map[string]*drive.File) // key: File.Id
-	for _, file := range files {
-		if file.MimeType == "application/vnd.google-apps.folder" {
-			folders[file.Id] = file
-		}
-	}
-  fmt.Printf("folders: %d\n", len(folders))
+	// folders := make(map[string]*drive.File) // key: File.Id
+	// for _, file := range files {
+	// 	if file.MimeType == "application/vnd.google-apps.folder" {
+	// 		folders[file.Id] = file
+	// 	}
+	// }
+  // fmt.Printf("folders: %d\n", len(folders))
 
-	// debug: print path of real files
-	for _, file := range files {
-		if file.Md5Checksum != "" {
-			// path := file.Name
-			// folder := folders[file.Parents[0]]
-			path := ""
-			for file != nil {
-				path = "/" + file.Name + path
-				// fmt.Printf("folder: %+v\n", folder)
-				if file.Parents != nil {
-					f, _ := folders[file.Parents[0]]
-					file = f
-				} else {
-					file = nil
-				}
-			}
-			fmt.Printf("%s\n", path)
-		}
-	}
+	// // debug: print path of real files
+	// for _, file := range files {
+	// 	if file.Md5Checksum != "" {
+	// 		// path := file.Name
+	// 		// folder := folders[file.Parents[0]]
+	// 		path := ""
+	// 		for file != nil {
+	// 			path = "/" + file.Name + path
+	// 			// fmt.Printf("folder: %+v\n", folder)
+	// 			if file.Parents != nil {
+	// 				f, _ := folders[file.Parents[0]]
+	// 				file = f
+	// 			} else {
+	// 				file = nil
+	// 			}
+	// 		}
+	// 		fmt.Printf("%s\n", path)
+	// 	}
+	// }
 }
 
-func local(basePath string) {
+func local(basePath string) []localFile {
+	var files []localFile
   walkFunc := func(path string, f os.FileInfo, err error) error {
 		// fmt.Printf("%s (%+v)\n", path, f)
 		if err != nil {
@@ -223,27 +221,95 @@ func local(basePath string) {
 		md5hex := hex.EncodeToString(md5sum[:])
 		relativePath, _ := filepath.Rel(basePath, path)
 		fmt.Printf("%s (md5: %s)\n", relativePath, md5hex)
+		files = append(files, localFile{relativePath, md5hex})
 		// return errors.New("stop")
 		return nil
 	}
 
 	err := filepath.Walk(basePath, walkFunc)
-	if err != nil {
+	if err != nil && err.Error() != "stop" {
 		log.Fatalf("filepath.Walk(%s) failed: %v", basePath, err)
 	}
+	// fmt.Printf("files:%v", files)
+	return files
 }
 
-// type localFile struct {
-	
-// }
+type localFile struct {
+	Path string
+	Md5Checksum string
+}
 
-// type cache struct {
-// 	remote []drive.File
-// 	local []
-// }
+type Files struct {
+	Remote []drive.File
+	Local []localFile
+}
+
+// func remotePath(
 
 func main() {
 	basePath := os.Args[1]
-	// remote()
-	local(basePath)
+	var files Files
+	// read json
+	if _, err := os.Stat("files.json"); err == nil {
+		fmt.Printf("Read files.json\n")
+		filesJson, err := ioutil.ReadFile("files.json")
+		if err != nil {
+			log.Fatalf("ioutil.ReadFile(files.json) failed: %v", err)
+		}
+		// files := map[string]*drive.File
+		err = json.Unmarshal(filesJson, &files)
+		if err != nil {
+			log.Fatalf("json.Unmarshal(filesJson) failed: %v", err)
+		}
+	}
+
+	// Get Files{Remote, Local}
+	if len(files.Remote) == 0 {
+		files.Remote = remote()
+	}
+	if len(files.Local) == 0 {
+		files.Local = local(basePath)
+	}
+	// write json
+	fmt.Printf("Writing files.json\n")
+	filesJson , err := json.MarshalIndent(files, "", "  ")
+	if err != nil {
+		log.Fatalf("json.Marshal(files) failed: %v", err)
+	}
+	err = ioutil.WriteFile("files.json", filesJson, 0644)
+	if err != nil {
+		log.Fatalf("ioutil.WriteFile(fileJson) failed: %v", err)
+	}
+
+	// Extract folders
+	folders := make(map[string]drive.File) // key: File.Id
+	for _, file := range files.Remote {
+		if file.MimeType == "application/vnd.google-apps.folder" {
+			folders[file.Id] = file
+		}
+	}
+  fmt.Printf("folders: %d\n", len(folders))
+
+	// debug print remote
+	for _, file := range files.Remote {
+		if file.Md5Checksum != "" {
+			f := &file
+			path := ""
+			for f != nil {
+				path = "/" + f.Name + path
+				if f.Parents != nil {
+					d, _ := folders[f.Parents[0]]
+					f = &d
+				} else {
+					f = nil
+				}
+			}
+			fmt.Printf("%s\n", path)
+		}
+	}
+	// debug print local
+	for _, file := range files.Local {
+		fmt.Printf("%s (md5=%s\n", file.Path, file.Md5Checksum)
+	}
+
 }
