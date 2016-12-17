@@ -244,7 +244,20 @@ type Files struct {
 	Local []localFile
 }
 
-// func remotePath(
+func remotePath(folders map[string]drive.File, file drive.File) string {
+	f := &file
+	path := ""
+	for f != nil {
+		path = "/" + f.Name + path
+		if f.Parents != nil {
+			d, _ := folders[f.Parents[0]]
+			f = &d
+		} else {
+			f = nil
+		}
+	}
+	return path
+}
 
 func main() {
 	basePath := os.Args[1]
@@ -292,20 +305,7 @@ func main() {
 
 	// debug print remote
 	for _, file := range files.Remote {
-		if file.Md5Checksum != "" {
-			f := &file
-			path := ""
-			for f != nil {
-				path = "/" + f.Name + path
-				if f.Parents != nil {
-					d, _ := folders[f.Parents[0]]
-					f = &d
-				} else {
-					f = nil
-				}
-			}
-			fmt.Printf("%s\n", path)
-		}
+		fmt.Printf("%s (md5=%s\n", remotePath(folders, file), file.Md5Checksum)
 	}
 	// debug print local
 	for _, file := range files.Local {
