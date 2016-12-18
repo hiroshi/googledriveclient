@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	// "errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -92,44 +93,29 @@ func saveToken(file string, token *oauth2.Token) {
 }
 
 
-func remote() []drive.File {
-	ctx := context.Background()
-
+func driveService() *drive.Service {
 	b, err := ioutil.ReadFile("client_secret.json")
 	if err != nil {
 		log.Fatalf("Unable to read client secret file: %v", err)
 	}
-
 	// If modifying these scopes, delete your previously saved credentials
 	// at ~/.credentials/drive-go-quickstart.json
-	config, err := google.ConfigFromJSON(b, drive.DriveMetadataReadonlyScope)
+	config, err := google.ConfigFromJSON(b, drive.DriveScope)
 	if err != nil {
 		log.Fatalf("Unable to parse client secret file to config: %v", err)
 	}
-	client := getClient(ctx, config)
+	client := getClient(context.Background(), config)
 
 	srv, err := drive.New(client)
 	if err != nil {
 		log.Fatalf("Unable to retrieve drive Client %v", err)
 	}
+	return srv
+}
 
-	// Get file list
+// Read from remote
+func remote(srv *drive.Service) []drive.File {
 	var files []drive.File
-	// // Read files from cache if available
-	// if _, err := os.Stat("files.json"); err == nil {
-	// 	fmt.Printf("Read files.json\n")
-	// 	filesJson, err := ioutil.ReadFile("files.json")
-	// 	if err != nil {
-	// 		log.Fatalf("ioutil.ReadFile(files.json) failed: %v", err)
-	// 	}
-	// 	// files := map[string]*drive.File
-	// 	err = json.Unmarshal(filesJson, &files)
-	// 	if err != nil {
-	// 		log.Fatalf("json.Unmarshal(filesJson) failed: %v", err)
-	// 	}
-	// }
-
-  // Read from remote
 	var numFiles int
 	var pageToken string
 	for {
@@ -147,9 +133,6 @@ func remote() []drive.File {
 		numFiles += len(r.Files)
 		for _, i := range r.Files {
 			fmt.Printf("%s (md5: %s, type: %s, id: %s, parents: %v)\n", i.Name, i.Md5Checksum, i.MimeType, i.Id, i.Parents)
-			// if i.Md5Checksum != "" {
-			// 	files[i.Md5Checksum] = i
-			// }
 			files = append(files, *i)
 		}
 		fmt.Printf("count:%d\n\n", numFiles)
@@ -157,48 +140,8 @@ func remote() []drive.File {
 			break
 		}
 		pageToken = r.NextPageToken
-		// break //DEBUG
 	}
 	return files
-	// // Cache files
-	// fmt.Printf("Write files.json\n")
-	// filesJson , err := json.MarshalIndent(files, "", "  ")
-	// if err != nil {
-	// 	log.Fatalf("json.Marshal(files) failed: %v", err)
-	// }
-	// err = ioutil.WriteFile("files.json", filesJson, 0644)
-	// if err != nil {
-	// 	log.Fatalf("ioutil.WriteFile(fileJson) failed: %v", err)
-	// }
-
-	// Extract folders
-	// folders := make(map[string]*drive.File) // key: File.Id
-	// for _, file := range files {
-	// 	if file.MimeType == "application/vnd.google-apps.folder" {
-	// 		folders[file.Id] = file
-	// 	}
-	// }
-  // fmt.Printf("folders: %d\n", len(folders))
-
-	// // debug: print path of real files
-	// for _, file := range files {
-	// 	if file.Md5Checksum != "" {
-	// 		// path := file.Name
-	// 		// folder := folders[file.Parents[0]]
-	// 		path := ""
-	// 		for file != nil {
-	// 			path = "/" + file.Name + path
-	// 			// fmt.Printf("folder: %+v\n", folder)
-	// 			if file.Parents != nil {
-	// 				f, _ := folders[file.Parents[0]]
-	// 				file = f
-	// 			} else {
-	// 				file = nil
-	// 			}
-	// 		}
-	// 		fmt.Printf("%s\n", path)
-	// 	}
-	// }
 }
 
 func local(basePath string) []localFile {
@@ -279,10 +222,10 @@ func main() {
 			log.Fatalf("json.Unmarshal(filesJson) failed: %v", err)
 		}
 	}
-
+	srv := driveService()
 	// Get Files{Remote, Local}
 	if len(files.Remote) == 0 {
-		files.Remote = remote()
+		files.Remote = remote(srv)
 	}
 	if len(files.Local) == 0 {
 		files.Local = local(basePath)
@@ -316,7 +259,23 @@ func main() {
 		if remote.Md5Checksum != "" {
 			local := localMd5[remote.Md5Checksum]
 			if local == nil {
-				fmt.Printf("%s (md5=%s)\n", remotePath(folders, remote), remote.Md5Checksum)
+				path := remotePath(folders, remote)
+				fmt.Printf("%s (md5=%s)\n", path, remote.Md5Checksum)
+				// download
+				localPath := filepath.Join(basePath, path)
+				fmt.Printf("=> %s\n", localPath)
+				resp, err := srv.Files.Get(remote.Id).Download()
+				if err != nil {
+					log.Fatalf("Download failed: %v", err)
+				}
+				defer resp.Body.Close()
+				out, err := os.Create(localPath)
+				if err != nil {
+					log.Fatalf("os.Create(%s) failed: %v", localPath, err)
+				}
+				defer out.Close()
+				io.Copy(out, resp.Body)
+				break
 			}
 			// break
 		}
