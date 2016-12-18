@@ -206,10 +206,8 @@ func remotePath(folders map[string]drive.File, file drive.File) string {
 	return path
 }
 
-func main() {
-	basePath := os.Args[1]
+func readFilesJson() *Files {
 	var files Files
-	// read json
 	if _, err := os.Stat("files.json"); err == nil {
 		fmt.Printf("Read files.json\n")
 		filesJson, err := ioutil.ReadFile("files.json")
@@ -222,16 +220,10 @@ func main() {
 			log.Fatalf("json.Unmarshal(filesJson) failed: %v", err)
 		}
 	}
-	srv := driveService()
-	// Get Files{Remote, Local}
-	if len(files.Remote) == 0 {
-		files.Remote = remote(srv)
-	}
-	if len(files.Local) == 0 {
-		files.Local = local(basePath)
-	}
-	// write json
-	fmt.Printf("Writing files.json\n")
+	return &files
+}
+
+func writeFilesJson(files *Files) {
 	filesJson , err := json.MarshalIndent(files, "", "  ")
 	if err != nil {
 		log.Fatalf("json.Marshal(files) failed: %v", err)
@@ -240,26 +232,43 @@ func main() {
 	if err != nil {
 		log.Fatalf("ioutil.WriteFile(fileJson) failed: %v", err)
 	}
+}
 
-	// Extract folders
+func remoteFolders(remote *[]drive.File) *map[string]drive.File {
 	folders := make(map[string]drive.File) // key: File.Id
-	for _, file := range files.Remote {
+	for _, file := range *remote {
 		if file.MimeType == "application/vnd.google-apps.folder" {
 			folders[file.Id] = file
 		}
 	}
-  // fmt.Printf("folders: %d\n", len(folders))
+	return &folders
+}
 
-	localMd5 := make(map[string]*localFile)
+func main() {
+	basePath := os.Args[1]
+
+	files := readFilesJson()
+	srv := driveService()
+	if len(files.Remote) == 0 {
+		files.Remote = remote(srv)
+	}
+	if len(files.Local) == 0 {
+		files.Local = local(basePath)
+	}
+	writeFilesJson(files)
+
+	folders := remoteFolders(&files.Remote)
+
+
+	localByMd5 := make(map[string]*localFile)
 	for _, file := range files.Local {
-		// fmt.Printf("%s (md5=%s\n", file.Path, file.Md5Checksum)
-		localMd5[file.Md5Checksum] = &file
+		localByMd5[file.Md5Checksum] = &file
 	}
 	for _, remote := range files.Remote {
 		if remote.Md5Checksum != "" {
-			local := localMd5[remote.Md5Checksum]
+			local := localByMd5[remote.Md5Checksum]
 			if local == nil {
-				path := remotePath(folders, remote)
+				path := remotePath(*folders, remote)
 				fmt.Printf("%s (md5=%s)\n", path, remote.Md5Checksum)
 				// download
 				localPath := filepath.Join(basePath, path)
